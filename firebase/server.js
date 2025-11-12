@@ -92,7 +92,7 @@ function setupFirestoreListener() {
   db.collection("device").onSnapshot((snapshot) => {
     console.log("📱 Firestore snapshot received");
     
-    snapshot.docChanges().forEach((change) => {
+    snapshot.docChanges().forEach(async (change) => {
       console.log("🔄 Firestore change:", change.type);
       
       if (change.type === "added") {
@@ -100,17 +100,57 @@ function setupFirestoreListener() {
       }
       
       if (change.type === "modified") {
-        console.log("✏️  Modified device:", change.doc.data());
-        const entity_id = "switch.lamp1"; // You might want to get this from the document
+        const deviceData = change.doc.data();
+        console.log("✏️  Modified device:", deviceData);
         
-        const domain = entity_id.split(".")[0];
-        axios.post(
-          `${HA_URL}/api/services/${domain}/toggle`,
-          { entity_id },
-          { headers: { Authorization: `Bearer ${HA_TOKEN}` } }
-        ).catch(error => {
+        const entity_id = "switch.lamp1"; // You might want to get this from the document
+        const desiredState = deviceData.state; // true = on, false = off
+        
+        try {
+          // Get current state from Home Assistant
+          const currentStateResponse = await axios.get(
+            `${HA_URL}/api/states/${entity_id}`,
+            { headers: { Authorization: `Bearer ${HA_TOKEN}` } }
+          );
+          
+          const currentState = currentStateResponse.data.state === "on";
+          
+          // Only toggle if the desired state is different from current state
+          if (desiredState !== currentState) {
+            console.log(`🔄 Toggling ${entity_id} from ${currentState} to ${desiredState}`);
+            
+            const domain = entity_id.split(".")[0];
+            const service = desiredState ? "turn_on" : "turn_off";
+            
+            await axios.post(
+              `${HA_URL}/api/services/${domain}/${service}`,
+              { entity_id },
+              { headers: { Authorization: `Bearer ${HA_TOKEN}` } }
+            );
+            
+            // Wait a bit for the state to change, then verify and sync back
+            setTimeout(async () => {
+              const verifyResponse = await axios.get(
+                `${HA_URL}/api/states/${entity_id}`,
+                { headers: { Authorization: `Bearer ${HA_TOKEN}` } }
+              );
+              
+              const actualState = verifyResponse.data.state === "on";
+              
+              // Update Firebase with the actual state
+              await db.collection("device").doc(change.doc.id).update({
+                state: actualState,
+                lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+              });
+              
+              console.log(`✅ Verified and synced ${entity_id}: ${actualState}`);
+            }, 500);
+          } else {
+            console.log(`⏭️  ${entity_id} already in desired state: ${currentState}`);
+          }
+        } catch (error) {
           console.error("❌ Failed to toggle device:", error.message);
-        });
+        }
       }
       
       if (change.type === "removed") {
@@ -142,6 +182,42 @@ app.get("/api/states", async (req, res) => {
     res.json(response.data);
   } catch (err) {
     console.error("❌ Failed to get states:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// REST API to get a specific entity state
+app.get("/api/states/:entity_id", async (req, res) => {
+  try {
+    const { entity_id } = req.params;
+    const response = await axios.get(`${HA_URL}/api/states/${entity_id}`, {
+      headers: { Authorization: `Bearer ${HA_TOKEN}` },
+    });
+    res.json(response.data);
+  } catch (err) {
+    console.error("❌ Failed to get state:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// REST API to sync current HA state to Firebase
+app.post("/api/sync", async (req, res) => {
+  const { entity_id } = req.body;
+  try {
+    const response = await axios.get(`${HA_URL}/api/states/${entity_id}`, {
+      headers: { Authorization: `Bearer ${HA_TOKEN}` },
+    });
+    
+    await syncToFirebase(entity_id, response.data);
+    
+    res.json({ 
+      success: true, 
+      entity_id,
+      state: response.data.state,
+      synced_to_firebase: true
+    });
+  } catch (err) {
+    console.error("❌ Failed to sync:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -184,7 +260,13 @@ async function syncToFirebase(entity_id, new_state) {
   if (!db) return;
   
   try {
-    const deviceId = entity_id.replace("light.", "").replace("_", "-");
+    // Convert entity_id to Firebase document ID
+    // switch.lamp1 -> lamp1
+    // light.living_room -> living-room
+    const deviceId = entity_id
+      .replace("switch.", "")
+      .replace("light.", "")
+      .replace(/_/g, "-");
     
     if (new_state && new_state.state !== undefined) {
       const isOn = new_state.state === "on";
@@ -194,7 +276,7 @@ async function syncToFirebase(entity_id, new_state) {
         lastUpdated: admin.firestore.FieldValue.serverTimestamp()
       });
       
-      console.log(`🔄 Synced ${entity_id} to Firebase: ${isOn}`);
+      console.log(`🔄 Synced ${entity_id} to Firebase (${deviceId}): ${isOn}`);
     }
   } catch (error) {
     console.error(`❌ Failed to sync ${entity_id} to Firebase:`, error.message);
@@ -231,8 +313,8 @@ ws.on("message", (msg) => {
     // Emit to Socket.IO clients
     io.emit("state_changed", { entity_id, new_state });
     
-    // Sync to Firebase if it's a light device
-    if (entity_id && entity_id.startsWith("light.")) {
+    // Sync to Firebase if it's a light or switch device
+    if (entity_id && (entity_id.startsWith("light.") || entity_id.startsWith("switch."))) {
       syncToFirebase(entity_id, new_state).catch(console.error);
     }
   }
