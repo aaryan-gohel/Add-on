@@ -1,20 +1,17 @@
-#!/usr/bin/with-contenv bashio
+#!/usr/bin/env bash
+set -e
 
-# ==============================================================================
-# Home Assistant Firebase Bridge Addon
-# ==============================================================================
-
-bashio::log.info "Starting Firebase Bridge Addon..."
+echo "Starting Firebase Bridge Addon..."
 
 # Check if required files exist
-if ! bashio::fs.file_exists "/config/firebase-service-account.json"; then
-    bashio::log.warning "Firebase service account file not found at /config/firebase-service-account.json"
-    bashio::log.info "Firebase features will be disabled"
+if [ ! -f "/config/firebase-service-account.json" ]; then
+    echo "WARNING: Firebase service account file not found at /config/firebase-service-account.json"
+    echo "Firebase features will be disabled"
 fi
 
 # Set environment variables
 export NODE_ENV=production
 
 # Start the application
-bashio::log.info "Starting Node.js server..."
+echo "Starting Node.js server..."
 exec node server.js

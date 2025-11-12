@@ -1,17 +1,20 @@
 ARG BUILD_FROM
 FROM $BUILD_FROM
 
-# Install Node.js
-RUN apk add --no-cache nodejs npm
+# Install Node.js and npm
+RUN apk add --no-cache \
+    nodejs \
+    npm \
+    bash
 
 # Set working directory
 WORKDIR /app
 
-# Copy package files
+# Copy package files first for better caching
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm install --production --no-audit --no-fund
 
 # Copy application files
 COPY . .

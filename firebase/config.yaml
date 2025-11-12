@@ -2,7 +2,6 @@ name: Firebase Bridge
 version: "1.0.0"
 slug: firebase_bridge
 description: "Bridge between Home Assistant and Firebase with REST API and WebSocket support"
-url: "https://github.com/your-repo/ha-firebase-bridge"
 startup: services
 boot: auto
 hassio_api: true
@@ -27,4 +26,3 @@ schema:
   firebase_service_account_path: str
   port: int
   cors_origin: str
-image: "ghcr.io/your-username/{arch}-firebase-bridge"

@@ -12,16 +12,38 @@ This addon bridges Home Assistant with Firebase, providing REST API endpoints an
 
 ## Installation
 
-1. Add this repository to your Home Assistant addon store
-2. Install the "Firebase Bridge" addon
-3. Configure the addon (see Configuration section)
-4. Start the addon
+### Method 1: Local Addon (Recommended)
+
+1. **Copy addon files to Home Assistant**:
+
+   ```bash
+   # SSH into your Home Assistant or use the File Editor addon
+   # Copy the entire ha-firebase-bridge-addon folder to:
+   /config/addons/firebase-bridge/
+   ```
+
+2. **Reload addons**:
+
+   - Go to Supervisor → Add-on Store
+   - Click the refresh button (⟳) in the top right
+   - The "Firebase Bridge" addon should appear in "Local add-ons"
+
+3. **Install the addon**:
+   - Click on "Firebase Bridge"
+   - Click "Install"
+
+### Method 2: Repository Installation
+
+1. Add this repository URL to your Home Assistant addon store
+2. Install the "Firebase Bridge" addon from the store
+3. Configure and start the addon
 
 ## Configuration
 
 ### Required Files
 
 Place your Firebase service account JSON file at:
+
 ```
 /config/firebase-service-account.json
 ```
@@ -29,7 +51,7 @@ Place your Firebase service account JSON file at:
 ### Addon Options
 
 ```yaml
-firebase_project_id: "your-project-id"  # Optional if included in service account
+firebase_project_id: "your-project-id" # Optional if included in service account
 firebase_service_account_path: "/config/firebase-service-account.json"
 port: 3000
 cors_origin: "*"
@@ -38,11 +60,13 @@ cors_origin: "*"
 ## API Endpoints
 
 ### Get All Device States
+
 ```http
 GET http://homeassistant.local:3000/api/states
 ```
 
 ### Toggle Device
+
 ```http
 POST http://homeassistant.local:3000/api/toggle
 Content-Type: application/json
@@ -53,6 +77,7 @@ Content-Type: application/json
 ```
 
 ### Call Service
+
 ```http
 POST http://homeassistant.local:3000/api/service
 Content-Type: application/json
@@ -68,6 +93,7 @@ Content-Type: application/json
 ```
 
 ### Health Check
+
 ```http
 GET http://homeassistant.local:3000/
 ```
@@ -75,6 +101,7 @@ GET http://homeassistant.local:3000/
 ## Firebase Integration
 
 The addon automatically:
+
 - Listens for changes in the `device` collection
 - Syncs Home Assistant light states to Firebase
 - Triggers device actions based on Firestore changes
@@ -95,10 +122,10 @@ The addon automatically:
 Connect to `http://homeassistant.local:3000` to receive real-time events:
 
 ```javascript
-const socket = io('http://homeassistant.local:3000');
+const socket = io("http://homeassistant.local:3000");
 
-socket.on('state_changed', (data) => {
-  console.log('Device state changed:', data.entity_id, data.new_state);
+socket.on("state_changed", (data) => {
+  console.log("Device state changed:", data.entity_id, data.new_state);
 });
 ```
 
@@ -111,6 +138,7 @@ socket.on('state_changed', (data) => {
 ## Logs
 
 View addon logs in Home Assistant:
+
 - Go to Supervisor → Firebase Bridge → Logs
 
 ## Support
