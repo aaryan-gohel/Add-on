@@ -271,10 +271,16 @@ async function syncToFirebase(entity_id, new_state) {
     if (new_state && new_state.state !== undefined) {
       const isOn = new_state.state === "on";
       
-      await db.collection("device").doc('light1').update({
-        state: isOn,
-        lastUpdated: admin.firestore.FieldValue.serverTimestamp()
-      });
+     await db.collection("device").doc(deviceId).set(
+  {
+    entity_id,
+    type: entity_id.split(".")[0], // "switch" or "light"
+    state: isOn,
+    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+  },
+  { merge: true }
+);
+
       
       console.log(`🔄 Synced ${entity_id} to Firebase (${"light1"}): ${isOn}`);
     }
