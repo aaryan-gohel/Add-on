@@ -293,13 +293,21 @@ ws.on("open", () => {
   console.log("🔌 Connected to Home Assistant WebSocket");
 });
 
-ws.on("message", (msg) => {
+// Track last updates to prevent loops (Firebase → HA → Firebase)
+const lastSyncedStates = {};
+
+ws.on("message", async (msg) => {
   const data = JSON.parse(msg);
-  
+
   if (data.type === "auth_required") {
     ws.send(JSON.stringify({ type: "auth", access_token: HA_TOKEN }));
-  } else if (data.type === "auth_ok") {
-    console.log("✅ Authenticated with Home Assistant");
+    return;
+  }
+
+  if (data.type === "auth_ok") {
+    console.log("✅ Authenticated with Home Assistant WebSocket");
+
+    // Subscribe to all entity state changes
     ws.send(
       JSON.stringify({
         id: 1,
@@ -307,16 +315,37 @@ ws.on("message", (msg) => {
         event_type: "state_changed",
       })
     );
-  } else if (data.type === "event") {
-    const { entity_id, new_state } = data.event.data;
-    
-    // Emit to Socket.IO clients
-    io.emit("state_changed", { entity_id, new_state });
-    
-    // Sync to Firebase if it's a light or switch device
-    if (entity_id && (entity_id.startsWith("light.") || entity_id.startsWith("switch."))) {
-      syncToFirebase(entity_id, new_state).catch(console.error);
-    }
+    return;
+  }
+
+  if (data.type !== "event") return;
+  const { entity_id, new_state } = data.event.data;
+
+  if (!entity_id || !new_state) return;
+
+  // Only track switches and lights
+  if (!entity_id.startsWith("switch.") && !entity_id.startsWith("light.")) return;
+
+  // Emit real-time change to Socket.IO clients
+  io.emit("state_changed", { entity_id, new_state });
+
+  const isOn = new_state.state === "on";
+  const prevState = lastSyncedStates[entity_id];
+
+  // Avoid redundant updates (loop prevention)
+  if (prevState === isOn) {
+    return;
+  }
+
+  lastSyncedStates[entity_id] = isOn;
+
+  // Log and sync to Firebase
+  console.log(`🔁 HA → Firebase: ${entity_id} changed to ${isOn ? "ON" : "OFF"}`);
+
+  try {
+    await syncToFirebase(entity_id, new_state);
+  } catch (err) {
+    console.error(`❌ Failed to sync ${entity_id} to Firebase:`, err.message);
   }
 });
 
