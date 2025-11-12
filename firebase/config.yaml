@@ -1,28 +1,24 @@
 name: Firebase Bridge
 version: "1.0.0"
 slug: firebase_bridge
-description: "Bridge between Home Assistant and Firebase with REST API and WebSocket support"
-startup: services
-boot: auto
-hassio_api: true
-homeassistant_api: true
+description: Bridge between Firebase and Home Assistant
 arch:
   - aarch64
   - armv7
-  - amd64
-  - i386
-map:
-  - config:rw
-  - ssl:ro
+startup: application
+boot: auto
+
 ports:
   3000/tcp: 3000
+
 options:
   firebase_project_id: ""
   firebase_service_account_path: "/config/firebase-service-account.json"
   port: 3000
   cors_origin: "*"
+
 schema:
   firebase_project_id: str?
-  firebase_service_account_path: str
-  port: int
-  cors_origin: str
+  firebase_service_account_path: str?
+  port: int?
+  cors_origin: str?
