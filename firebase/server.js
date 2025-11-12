@@ -138,7 +138,7 @@ function setupFirestoreListener() {
               const actualState = verifyResponse.data.state === "on";
               
               // Update Firebase with the actual state
-              await db.collection("device").doc(change.doc.id).update({
+              await db.collection("device").doc('light1').update({
                 state: actualState,
                 lastUpdated: admin.firestore.FieldValue.serverTimestamp()
               });
@@ -271,12 +271,12 @@ async function syncToFirebase(entity_id, new_state) {
     if (new_state && new_state.state !== undefined) {
       const isOn = new_state.state === "on";
       
-      await db.collection("device").doc(deviceId).update({
+      await db.collection("device").doc('light1').update({
         state: isOn,
         lastUpdated: admin.firestore.FieldValue.serverTimestamp()
       });
       
-      console.log(`🔄 Synced ${entity_id} to Firebase (${deviceId}): ${isOn}`);
+      console.log(`🔄 Synced ${entity_id} to Firebase (${"light1"}): ${isOn}`);
     }
   } catch (error) {
     console.error(`❌ Failed to sync ${entity_id} to Firebase:`, error.message);
