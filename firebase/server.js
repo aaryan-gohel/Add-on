@@ -11,6 +11,15 @@ import fs from "fs";
 const HA_URL = "http://supervisor/core";
 const HA_TOKEN = process.env.SUPERVISOR_TOKEN;
 
+console.log("🔧 Environment Check:");
+console.log(`   HA_URL: ${HA_URL}`);
+console.log(`   HA_TOKEN: ${HA_TOKEN ? "✅ Set" : "❌ Missing"}`);
+
+if (!HA_TOKEN) {
+  console.error("❌ SUPERVISOR_TOKEN not found. This addon requires Home Assistant Supervisor API access.");
+  process.exit(1);
+}
+
 // Read addon options
 const optionsPath = "/data/options.json";
 let options = {};
@@ -18,9 +27,12 @@ let options = {};
 try {
   if (fs.existsSync(optionsPath)) {
     options = JSON.parse(fs.readFileSync(optionsPath, "utf8"));
+    console.log("📋 Addon options loaded:", Object.keys(options));
+  } else {
+    console.log("⚠️  No options file found, using defaults");
   }
 } catch (error) {
-  console.error("Failed to read options:", error.message);
+  console.error("❌ Failed to read options:", error.message);
 }
 
 const {

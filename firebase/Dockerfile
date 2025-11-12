@@ -1,11 +1,8 @@
-ARG BUILD_FROM
-FROM $BUILD_FROM
+# Use Node.js Alpine image directly
+FROM node:18-alpine
 
-# Install Node.js and npm
-RUN apk add --no-cache \
-    nodejs \
-    npm \
-    bash
+# Install bash and other required packages
+RUN apk add --no-cache bash curl ca-certificates
 
 # Set working directory
 WORKDIR /app
