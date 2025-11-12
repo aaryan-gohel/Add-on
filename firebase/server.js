@@ -306,6 +306,8 @@ async function syncToFirebase(entity_id, new_state) {
 
     if (new_state && new_state.state !== undefined) {
       const isOn = new_state.state === "on";
+      console.log('device id =====',deviceId);
+      
 
       const docRef = db.collection("device").doc(deviceId);
 
