@@ -16,7 +16,9 @@ console.log(`   HA_URL: ${HA_URL}`);
 console.log(`   HA_TOKEN: ${HA_TOKEN ? "✅ Set" : "❌ Missing"}`);
 
 if (!HA_TOKEN) {
-  console.error("❌ SUPERVISOR_TOKEN not found. This addon requires Home Assistant Supervisor API access.");
+  console.error(
+    "❌ SUPERVISOR_TOKEN not found. This addon requires Home Assistant Supervisor API access."
+  );
   process.exit(1);
 }
 
@@ -39,7 +41,7 @@ const {
   firebase_project_id = "",
   firebase_service_account_path = "/config/firebase-service-account.json",
   port = 3000,
-  cors_origin = "*"
+  cors_origin = "*",
 } = options;
 
 console.log("🔧 Addon Configuration:");
@@ -51,20 +53,24 @@ console.log(`   Service Account Path: ${firebase_service_account_path}`);
 let db = null;
 try {
   if (fs.existsSync(firebase_service_account_path)) {
-    const serviceAccount = JSON.parse(fs.readFileSync(firebase_service_account_path, "utf8"));
-    
+    const serviceAccount = JSON.parse(
+      fs.readFileSync(firebase_service_account_path, "utf8")
+    );
+
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
-      projectId: firebase_project_id || serviceAccount.project_id
+      projectId: firebase_project_id || serviceAccount.project_id,
     });
-    
+
     db = admin.firestore();
     console.log("🔥 Firebase Admin initialized successfully");
-    
+
     // Set up Firestore listener
     setupFirestoreListener();
   } else {
-    console.log("⚠️  Firebase service account file not found, Firebase features disabled");
+    console.log(
+      "⚠️  Firebase service account file not found, Firebase features disabled"
+    );
   }
 } catch (error) {
   console.log("⚠️  Firebase Admin initialization failed:", error.message);
@@ -72,10 +78,12 @@ try {
 
 const app = express();
 app.use(express.json());
-app.use(cors({
-  origin: cors_origin,
-  methods: ["GET", "POST"]
-}));
+app.use(
+  cors({
+    origin: cors_origin,
+    methods: ["GET", "POST"],
+  })
+);
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -88,77 +96,86 @@ const io = new Server(server, {
 // Firestore listener setup
 function setupFirestoreListener() {
   if (!db) return;
-  
+
   db.collection("device").onSnapshot((snapshot) => {
     console.log("📱 Firestore snapshot received");
-    
+
     snapshot.docChanges().forEach(async (change) => {
       console.log("🔄 Firestore change:", change.type);
-      
+
       if (change.type === "added") {
         console.log("➕ New device:", change.doc.data());
       }
-      
+
       if (change.type === "modified") {
         const deviceData = change.doc.data();
         console.log("✏️  Modified device:", deviceData);
-        
+
         const entity_id = "switch.lamp1"; // You might want to get this from the document
         const desiredState = deviceData.state; // true = on, false = off
-        
+
         try {
           // Get current state from Home Assistant
           const currentStateResponse = await axios.get(
             `${HA_URL}/api/states/${entity_id}`,
             { headers: { Authorization: `Bearer ${HA_TOKEN}` } }
           );
-          
+
           const currentState = currentStateResponse.data.state === "on";
-          
+
           // Only toggle if the desired state is different from current state
           if (desiredState !== currentState) {
-            console.log(`🔄 Toggling ${entity_id} from ${currentState} to ${desiredState}`);
-            
+            console.log(
+              `🔄 Toggling ${entity_id} from ${currentState} to ${desiredState}`
+            );
+
             const domain = entity_id.split(".")[0];
             const service = desiredState ? "turn_on" : "turn_off";
-            
+
             await axios.post(
               `${HA_URL}/api/services/${domain}/${service}`,
               { entity_id },
               { headers: { Authorization: `Bearer ${HA_TOKEN}` } }
             );
-            
+
             // Wait a bit for the state to change, then verify and sync back
             setTimeout(async () => {
               const verifyResponse = await axios.get(
                 `${HA_URL}/api/states/${entity_id}`,
                 { headers: { Authorization: `Bearer ${HA_TOKEN}` } }
               );
-              
+
               const actualState = verifyResponse.data.state === "on";
+
+              // Update Firebase with the actual state using the document ID from the change
+              const deviceId = change.doc.id;
+              const docRef = db.collection("device").doc(deviceId);
               
-              // Update Firebase with the actual state
-              await db.collection("device").doc('light1').update({
+              await docRef.set({
                 state: actualState,
-                lastUpdated: admin.firestore.FieldValue.serverTimestamp()
-              });
-              
-              console.log(`✅ Verified and synced ${entity_id}: ${actualState}`);
+                lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+              }, { merge: true });
+
+              console.log(
+                `✅ Verified and synced ${entity_id}: ${actualState}`
+              );
             }, 500);
           } else {
-            console.log(`⏭️  ${entity_id} already in desired state: ${currentState}`);
+            console.log(
+              `⏭️  ${entity_id} already in desired state: ${currentState}`
+            );
           }
         } catch (error) {
           console.error("❌ Failed to toggle device:", error.message);
         }
       }
-      
+
       if (change.type === "removed") {
         console.log("➖ Removed device:", change.doc.data());
       }
     });
   });
-  
+
   console.log("👂 Listening to Firestore changes...");
 }
 
@@ -169,7 +186,7 @@ app.get("/", (req, res) => {
     version: "1.0.0",
     status: "running",
     firebase_enabled: !!db,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -207,14 +224,14 @@ app.post("/api/sync", async (req, res) => {
     const response = await axios.get(`${HA_URL}/api/states/${entity_id}`, {
       headers: { Authorization: `Bearer ${HA_TOKEN}` },
     });
-    
+
     await syncToFirebase(entity_id, response.data);
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       entity_id,
       state: response.data.state,
-      synced_to_firebase: true
+      synced_to_firebase: true,
     });
   } catch (err) {
     console.error("❌ Failed to sync:", err.message);
@@ -258,7 +275,7 @@ app.post("/api/service", async (req, res) => {
 // Function to sync Home Assistant state changes to Firebase
 async function syncToFirebase(entity_id, new_state) {
   if (!db) return;
-  
+
   try {
     // Convert entity_id to Firebase document ID
     // switch.lamp1 -> lamp1
@@ -267,22 +284,32 @@ async function syncToFirebase(entity_id, new_state) {
       .replace("switch.", "")
       .replace("light.", "")
       .replace(/_/g, "-");
-    
+
     if (new_state && new_state.state !== undefined) {
       const isOn = new_state.state === "on";
-      
-     await db.collection("device").doc(deviceId).set(
-  {
-    entity_id,
-    type: entity_id.split(".")[0], // "switch" or "light"
-    state: isOn,
-    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-  },
-  { merge: true }
-);
 
-      
-      console.log(`🔄 Synced ${entity_id} to Firebase (${"light1"}): ${isOn}`);
+      const docRef = db.collection("device").doc(deviceId);
+
+      // Check if document exists first
+      const docSnapshot = await docRef.get();
+
+      if (docSnapshot.exists) {
+        // Document exists, update it
+        await docRef.update({
+          state: isOn,
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      } else {
+        // Document doesn't exist, create it
+        await docRef.set({
+          entity_id,
+          type: entity_id.split(".")[0], // "switch" or "light"
+          state: isOn,
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+
+      console.log(`🔄 Synced ${entity_id} to Firebase (${deviceId}): ${isOn}`);
     }
   } catch (error) {
     console.error(`❌ Failed to sync ${entity_id} to Firebase:`, error.message);
@@ -330,7 +357,8 @@ ws.on("message", async (msg) => {
   if (!entity_id || !new_state) return;
 
   // Only track switches and lights
-  if (!entity_id.startsWith("switch.") && !entity_id.startsWith("light.")) return;
+  if (!entity_id.startsWith("switch.") && !entity_id.startsWith("light."))
+    return;
 
   // Emit real-time change to Socket.IO clients
   io.emit("state_changed", { entity_id, new_state });
@@ -346,7 +374,9 @@ ws.on("message", async (msg) => {
   lastSyncedStates[entity_id] = isOn;
 
   // Log and sync to Firebase
-  console.log(`🔁 HA → Firebase: ${entity_id} changed to ${isOn ? "ON" : "OFF"}`);
+  console.log(
+    `🔁 HA → Firebase: ${entity_id} changed to ${isOn ? "ON" : "OFF"}`
+  );
 
   try {
     await syncToFirebase(entity_id, new_state);
@@ -366,7 +396,7 @@ ws.on("close", () => {
 // Socket.IO connection handling
 io.on("connection", (socket) => {
   console.log("👤 Client connected:", socket.id);
-  
+
   socket.on("disconnect", () => {
     console.log("👤 Client disconnected:", socket.id);
   });
