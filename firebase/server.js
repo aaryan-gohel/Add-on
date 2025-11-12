@@ -272,42 +272,50 @@ app.post("/api/service", async (req, res) => {
   }
 });
 
+// Map Home Assistant entity IDs to Firebase document IDs
+function getFirebaseDocId(entity_id) {
+  // Add your custom mappings here
+  const customMappings = {
+    "switch.lamp1": "light1",
+    // Add more mappings as needed:
+    // "switch.bedroom_light": "bedroom",
+    // "light.kitchen": "kitchen",
+  };
+  
+  // Check if there's a custom mapping
+  if (customMappings[entity_id]) {
+    return customMappings[entity_id];
+  }
+  
+  // Default: remove domain prefix and replace underscores
+  // switch.lamp1 -> lamp1
+  // light.living_room -> living-room
+  return entity_id
+    .replace("switch.", "")
+    .replace("light.", "")
+    .replace(/_/g, "-");
+}
+
 // Function to sync Home Assistant state changes to Firebase
 async function syncToFirebase(entity_id, new_state) {
   if (!db) return;
 
   try {
     // Convert entity_id to Firebase document ID
-    // switch.lamp1 -> lamp1
-    // light.living_room -> living-room
-    const deviceId = entity_id
-      .replace("switch.", "")
-      .replace("light.", "")
-      .replace(/_/g, "-");
+    const deviceId = getFirebaseDocId(entity_id);
 
     if (new_state && new_state.state !== undefined) {
       const isOn = new_state.state === "on";
 
       const docRef = db.collection("device").doc(deviceId);
 
-      // Check if document exists first
-      const docSnapshot = await docRef.get();
-
-      if (docSnapshot.exists) {
-        // Document exists, update it
-        await docRef.update({
-          state: isOn,
-          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-        });
-      } else {
-        // Document doesn't exist, create it
-        await docRef.set({
-          entity_id,
-          type: entity_id.split(".")[0], // "switch" or "light"
-          state: isOn,
-          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-        });
-      }
+      // Use set with merge to create or update the document
+      await docRef.set({
+        entity_id,
+        type: entity_id.split(".")[0], // "switch" or "light"
+        state: isOn,
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
 
       console.log(`🔄 Synced ${entity_id} to Firebase (${deviceId}): ${isOn}`);
     }
