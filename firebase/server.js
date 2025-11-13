@@ -111,77 +111,62 @@ function setupFirestoreListener() {
         const deviceData = change.doc.data();
         console.log("✏️  Modified device:", deviceData);
 
-        // Check if action field was modified
-        if (!deviceData.action) {
-          return; // No action to process
-        }
-
-        const entity_id = deviceData.entity_id || "switch.lamp1";
-        const action = deviceData.action; // "on" or "off"
-
-        // Validate action
-        if (action !== "on" && action !== "off") {
-          console.log(`⚠️  Invalid action: ${action}`);
-          return;
-        }
+        const entity_id = "switch.lamp1"; // You might want to get this from the document
+        const desiredState = deviceData.state; // true = on, false = off
 
         try {
-          console.log(`🎬 Processing action: ${action} for ${entity_id}`);
-
-          const domain = entity_id.split(".")[0];
-          const service = action === "on" ? "turn_on" : "turn_off";
-
-          // Call Home Assistant API
-          await axios.post(
-            `${HA_URL}/api/services/${domain}/${service}`,
-            { entity_id },
+          // Get current state from Home Assistant
+          const currentStateResponse = await axios.get(
+            `${HA_URL}/api/states/${entity_id}`,
             { headers: { Authorization: `Bearer ${HA_TOKEN}` } }
           );
 
-          console.log(`✅ Successfully executed ${service} on ${entity_id}`);
+          const currentState = currentStateResponse.data.state === "on";
 
-          // Wait a bit for the state to change, then verify and update state
-          setTimeout(async () => {
-            try {
+          // Only toggle if the desired state is different from current state
+          if (desiredState !== currentState) {
+            console.log(
+              `🔄 Toggling ${entity_id} from ${currentState} to ${desiredState}`
+            );
+
+            const domain = entity_id.split(".")[0];
+            const service = desiredState ? "turn_on" : "turn_off";
+
+            await axios.post(
+              `${HA_URL}/api/services/${domain}/${service}`,
+              { entity_id },
+              { headers: { Authorization: `Bearer ${HA_TOKEN}` } }
+            );
+
+            // Wait a bit for the state to change, then verify and sync back
+            setTimeout(async () => {
               const verifyResponse = await axios.get(
                 `${HA_URL}/api/states/${entity_id}`,
                 { headers: { Authorization: `Bearer ${HA_TOKEN}` } }
               );
 
               const actualState = verifyResponse.data.state === "on";
+
+              // Update Firebase with the actual state using the document ID from the change
               const deviceId = change.doc.id;
               const docRef = db.collection("device").doc(deviceId);
-
-              // Update state and clear action
-              await docRef.set(
-                {
-                  state: actualState,
-                  action: admin.firestore.FieldValue.delete(), // Clear the action
-                  lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-                },
-                { merge: true }
-              );
+              
+              await docRef.set({
+                state: actualState,
+                lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+              }, { merge: true });
 
               console.log(
-                `✅ Updated state for ${entity_id}: ${actualState ? "ON" : "OFF"}`
+                `✅ Verified and synced ${entity_id}: ${actualState}`
               );
-            } catch (error) {
-              console.error("❌ Failed to verify state:", error.message);
-            }
-          }, 500);
+            }, 500);
+          } else {
+            console.log(
+              `⏭️  ${entity_id} already in desired state: ${currentState}`
+            );
+          }
         } catch (error) {
-          console.error("❌ Failed to execute action:", error.message);
-          
-          // Clear the action even on failure
-          const deviceId = change.doc.id;
-          const docRef = db.collection("device").doc(deviceId);
-          await docRef.set(
-            {
-              action: admin.firestore.FieldValue.delete(),
-              lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-            },
-            { merge: true }
-          );
+          console.error("❌ Failed to toggle device:", error.message);
         }
       }
 
@@ -321,6 +306,8 @@ async function syncToFirebase(entity_id, new_state) {
 
     if (new_state && new_state.state !== undefined) {
       const isOn = new_state.state === "on";
+      console.log('device id =====',deviceId);
+      
 
       const docRef = db.collection("device").doc(deviceId);
 
